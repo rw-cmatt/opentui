@@ -27,6 +27,38 @@ export interface DevtoolsMessage {
 
 let devtoolsEnabled = false
 let devtoolsCallback: ((message: DevtoolsMessage) => void) | null = null
+let wsClient: WebSocket | null = null
+let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+export function initDevtools(): void {
+  const port = process.env.OTUI_DEVTOOLS_PORT
+  if (!port) return
+
+  connectToDevtoolsServer(parseInt(port, 10))
+}
+
+function connectToDevtoolsServer(port: number): void {
+  try {
+    wsClient = new WebSocket(`ws://localhost:${port}/layout`)
+
+    wsClient.onopen = () => {
+      devtoolsEnabled = true
+      console.log("[opentui] Connected to devtools server")
+    }
+
+    wsClient.onclose = () => {
+      devtoolsEnabled = false
+      wsClient = null
+      wsReconnectTimer = setTimeout(() => connectToDevtoolsServer(port), 2000)
+    }
+
+    wsClient.onerror = () => {
+      wsClient?.close()
+    }
+  } catch {
+    devtoolsEnabled = false
+  }
+}
 
 export function enableDevtools(callback: (message: DevtoolsMessage) => void): void {
   devtoolsEnabled = true
@@ -36,6 +68,14 @@ export function enableDevtools(callback: (message: DevtoolsMessage) => void): vo
 export function disableDevtools(): void {
   devtoolsEnabled = false
   devtoolsCallback = null
+  if (wsClient) {
+    wsClient.close()
+    wsClient = null
+  }
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer)
+    wsReconnectTimer = null
+  }
 }
 
 export function isDevtoolsEnabled(): boolean {
@@ -101,7 +141,7 @@ function getFlexDirectionName(value: number): string {
 }
 
 export function emitLayoutTree(root: Renderable): void {
-  if (!devtoolsEnabled || !devtoolsCallback) return
+  if (!devtoolsEnabled) return
 
   const message: DevtoolsMessage = {
     type: "layout-tree",
@@ -109,5 +149,13 @@ export function emitLayoutTree(root: Renderable): void {
     tree: extractLayoutTree(root),
   }
 
-  devtoolsCallback(message)
+  if (devtoolsCallback) {
+    devtoolsCallback(message)
+  }
+
+  if (wsClient && wsClient.readyState === WebSocket.OPEN) {
+    wsClient.send(JSON.stringify(message))
+  }
 }
+
+initDevtools()
