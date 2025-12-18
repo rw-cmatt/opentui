@@ -1,5 +1,6 @@
 import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
+import { emitLayoutTree, isDevtoolsEnabled } from "./devtools"
 import { OptimizedBuffer } from "./buffer"
 import type { KeyEvent, PasteEvent } from "./lib/KeyHandler"
 import type { MouseEventType } from "./lib/parse.mouse"
@@ -316,6 +317,10 @@ export abstract class Renderable extends BaseRenderable {
   public get primaryAxis(): "row" | "column" {
     const dir = this.yogaNode.getFlexDirection()
     return dir === 2 || dir === 3 ? "row" : "column"
+  }
+
+  public getYogaNode(): YogaNode {
+    return this.yogaNode
   }
 
   public set visible(value: boolean) {
@@ -1642,6 +1647,10 @@ export class RootRenderable extends Renderable {
   public calculateLayout(): void {
     this.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
     this.emit(LayoutEvents.LAYOUT_CHANGED)
+
+    if (isDevtoolsEnabled()) {
+      emitLayoutTree(this as unknown as Renderable)
+    }
   }
 
   public resize(width: number, height: number): void {
